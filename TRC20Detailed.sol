@@ -5,7 +5,7 @@ import "./IERC20.sol";
 /**
  * @dev Optional functions from the ERC20 standard.
  */
-contract ERC20Detailed is IERC20 {
+contract TRC20Detailed is IERC20 {
     string private _name;
     string private _symbol;
     uint8 private _decimals;
