@@ -1,6 +1,7 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.7.0;
 
-import "./IERC20.sol";
+import "./BasicToken.sol";
+import "./Freeze.sol";
 import "./SafeMath.sol";
 
 /**
@@ -27,7 +28,7 @@ import "./SafeMath.sol";
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IERC20-approve}.
  */
-contract ERC20 is IERC20 {
+contract BtdToken is BasicToken,Freeze {
     using SafeMath for uint256;
 
     mapping (address => uint256) private _balances;
@@ -36,28 +37,63 @@ contract ERC20 is IERC20 {
 
     uint256 private _totalSupply;
 
-    mapping (address => bool) private _freezes;
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+
+    constructor (uint _initialSupply,string memory name, string memory symbol, uint8 decimals) public {
+        _name = name;
+        _symbol = symbol;
+        _decimals = decimals;
+        _mint(_owner, _initialSupply);
+    }
+
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @dev Returns the symbol of the token, usually a shorter version of the
+     * name.
+     */
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    /**
+     * @dev Returns the number of decimals used to get its user representation.
+     * For example, if `decimals` equals `2`, a balance of `505` tokens should
+     * be displayed to a user as `5,05` (`505 / 10 ** 2`).
+     *
+     * Tokens usually opt for a value of 18, imitating the relationship between
+     * Ether and Wei.
+     *
+     * NOTE: This information is only used for _display_ purposes: it in
+     * no way affects any of the arithmetic of the contract, including
+     * {IERC20-balanceOf} and {IERC20-transfer}.
+     */
+    function decimals() public view returns (uint8) {
+        return _decimals;
+    }
 
     /**
      * @dev See {IERC20-totalSupply}.
      */
-    function totalSupply() public view returns (uint256) {
+    function totalSupply() external override (BasicToken) view returns (uint256) {
         return _totalSupply;
     }
 
     /**
      * @dev See {IERC20-balanceOf}.
      */
-    function balanceOf(address account) public view returns (uint256) {
+    function balanceOf(address account) external override (BasicToken) view returns (uint256) {
         return _balances[account];
     }
 
-       /**
-     * @dev See {freeze}.
-     */
-    function freezeOf(address account) public view returns (bool) {
-        return _freezes[account];
-    }
+
 
     /**
      * @dev See {IERC20-transfer}.
@@ -67,7 +103,7 @@ contract ERC20 is IERC20 {
      * - `recipient` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
-    function transfer(address recipient, uint256 amount) public returns (bool) {
+    function transfer(address recipient, uint256 amount) external override (BasicToken) returns (bool) {
         _transfer(msg.sender, recipient, amount);
         return true;
     }
@@ -75,7 +111,7 @@ contract ERC20 is IERC20 {
     /**
      * @dev See {IERC20-allowance}.
      */
-    function allowance(address owner, address spender) public view returns (uint256) {
+    function allowance(address owner, address spender) external override (BasicToken) view returns (uint256) {
         return _allowances[owner][spender];
     }
 
@@ -86,7 +122,7 @@ contract ERC20 is IERC20 {
      *
      * - `spender` cannot be the zero address.
      */
-    function approve(address spender, uint256 value) public returns (bool) {
+    function approve(address spender, uint256 value) external override (BasicToken) returns (bool) {
         _approve(msg.sender, spender, value);
         return true;
     }
@@ -103,7 +139,8 @@ contract ERC20 is IERC20 {
      * - the caller must have allowance for `sender`'s tokens of at least
      * `amount`.
      */
-    function transferFrom(address sender, address recipient, uint256 amount) public returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) external override (BasicToken) returns (bool) {
+        require(amount <= _allowances[sender][msg.sender]);
         _transfer(sender, recipient, amount);
         _approve(sender, msg.sender, _allowances[sender][msg.sender].sub(amount));
         return true;
@@ -162,9 +199,8 @@ contract ERC20 is IERC20 {
     function _transfer(address sender, address recipient, uint256 amount) internal {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
-
-        bool is_freeze = _freezes[sender];
-        require(!is_freeze, "ERC20: sender address is freeze");
+        require(amount <= _balances[sender]);
+        require(!_freezes[sender]);
 
 
         _balances[sender] = _balances[sender].sub(amount);
@@ -172,31 +208,7 @@ contract ERC20 is IERC20 {
         emit Transfer(sender, recipient, amount);
     }
 
-    /** @dev freeze `account` 
-     *
-     *
-     * Requirements
-     *
-     * - `account` cannot be the zero address.
-     */
-    function _freeze(address account) internal {
-        require(account != address(0), "ERC20: freeze account the zero address");
 
-        _freezes[account] = true;
-    }
-
-     /** @dev unfreeze `account` 
-     *
-     *
-     * Requirements
-     *
-     * - `account` cannot be the zero address.
-     */
-    function _unfreeze(address account) internal {
-        require(account != address(0), "ERC20: freeze account the zero address");
-
-        _freezes[account] = false;
-    }
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
      * the total supply.
@@ -215,23 +227,12 @@ contract ERC20 is IERC20 {
         emit Transfer(address(0), account, amount);
     }
 
-     /**
-     * @dev Destroys `amount` tokens from `account`, reducing the
-     * total supply.
-     *
-     * Emits a {Transfer} event with `to` set to the zero address.
-     *
-     * Requirements
-     *
-     * - `account` cannot be the zero address.
-     * - `account` must have at least `amount` tokens.
-     */
-    function _burn(address account, uint256 value) internal {
-        require(account != address(0), "ERC20: burn from the zero address");
+
+    function burn( uint256 value) public onlyOwner {
 
         _totalSupply = _totalSupply.sub(value);
-        _balances[account] = _balances[account].sub(value);
-        emit Transfer(account, address(0), value);
+        _balances[_owner] = _balances[_owner].sub(value);
+        emit Transfer(_owner, address(0), value);
     }
 
     /**
@@ -253,16 +254,5 @@ contract ERC20 is IERC20 {
 
         _allowances[owner][spender] = value;
         emit Approval(owner, spender, value);
-    }
-
-    /**
-     * @dev Destoys `amount` tokens from `account`.`amount` is then deducted
-     * from the caller's allowance.
-     *
-     * See {_burn} and {_approve}.
-     */
-    function _burnFrom(address account, uint256 amount) internal {
-        _burn(account, amount);
-        _approve(account, msg.sender, _allowances[account][msg.sender].sub(amount));
     }
 }
